@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>인생네컷 데모</title>
+<style>
+  :root{--bg:#0b0b0f;--panel:#111;--accent:#ffb86b;}
+  body{margin:0;background:linear-gradient(180deg,#08080a,#0f0f12);color:#fff;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,'Noto Sans KR';display:flex;flex-direction:column;align-items:center;gap:16px;padding:18px;min-height:100vh;box-sizing:border-box;}
+  .stage{width:360px;background:var(--panel);padding:12px;border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,.6);display:flex;flex-direction:column;gap:10px;align-items:center;}
+  video#preview{width:320px;height:426px;background:#222;object-fit:cover;border-radius:8px;}
+  .controls{display:flex;gap:8px;}
+  button{background:var(--accent);border:none;padding:10px 14px;border-radius:8px;font-weight:600;cursor:pointer;}
+  .small{padding:8px 10px;font-size:14px;background:#222;border:1px solid #333;}
+  .count{position:absolute;font-size:72px;font-weight:800;opacity:0.95;pointer-events:none;}
+  .strip{margin-top:8px;width:160px;display:flex;flex-direction:column;gap:6px;}
+  .strip img{width:160px;height:480px;object-fit:cover;border-radius:6px;border:2px solid #222;}
+  .thumbnail-row{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;}
+  #finalImg{max-width:320px;border-radius:6px;border:2px solid #222;}
+  .footer{font-size:12px;color:#bbb;margin-top:6px;}
+</style>
+</head>
+<body>
+  <h2>인생네컷 데모</h2>
+  <div class="stage">
+    <div style="position:relative">
+      <video id="preview" autoplay playsinline></video>
+      <div id="countdown" class="count" style="display:none;left:50%;transform:translateX(-50%);top:40%"></div>
+    </div>
+
+    <div class="controls">
+      <button id="startBtn">촬영 시작</button>
+      <button id="retakeBtn" class="small" disabled>다시 촬영</button>
+      <button id="downloadBtn" class="small" disabled>다운로드</button>
+    </div>
+
+    <div class="thumbnail-row" id="thumbs"></div>
+    <canvas id="composeCanvas" style="display:none;"></canvas>
+    <img id="finalImg" alt="final" style="display:none" />
+  </div>
+
+  <div class="footer">카운트다운 → 4장 촬영 → 합성 → 다운로드</div>
+
+<script>
+(async function(){
+  const video = document.getElementById('preview');
+  const startBtn = document.getElementById('startBtn');
+  const retakeBtn = document.getElementById('retakeBtn');
+  const downloadBtn = document.getElementById('downloadBtn');
+  const countdownEl = document.getElementById('countdown');
+  const thumbs = document.getElementById('thumbs');
+  const finalImg = document.getElementById('finalImg');
+  const composeCanvas = document.getElementById('composeCanvas');
+
+  // 카메라 열기 (기본 전면/후면은 장치에 따라 선택)
+  let stream;
+  try{
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio:false});
+    video.srcObject = stream;
+  } catch(e){
+    alert('카메라 권한 필요: ' + e.message);
+    console.error(e);
+    return;
+  }
+
+  function sleep(ms){ return new Promise(r=>setTimeout(r, ms)); }
+
+  function captureFrame(width = 720){
+    // 비디오에서 캡처 (정사각 크롭)
+    const h = video.videoHeight;
+    const w = video.videoWidth;
+    const size = Math.min(w,h);
+    const sx = Math.floor((w-size)/2);
+    const sy = Math.floor((h-size)/2);
+    const canvas = document.createElement('canvas');
+    const target = width; // output square px
+    canvas.width = target;
+    canvas.height = target;
+    const ctx = canvas.getContext('2d');
+    // draw centered square crop scaled to target
+    ctx.drawImage(video, sx, sy, size, size, 0, 0, target, target);
+    return canvas.toDataURL('image/jpeg', 0.95);
+  }
+
+  async function doCountdown(start = 3){
+    countdownEl.style.display = 'block';
+    for(let i = start; i >= 1; --i){
+      countdownEl.textContent = i;
+      await sleep(800);
+    }
+    countdownEl.style.display = 'none';
+  }
+
+  let shots = [];
+
+  async function shootSequence(){
+    startBtn.disabled = true;
+    retakeBtn.disabled = true;
+    downloadBtn.disabled = true;
+    shots = [];
+    thumbs.innerHTML = '';
+    finalImg.style.display = 'none';
+
+    for(let i=0;i<4;i++){
+      await doCountdown(3);
+      // 셔터 사운드 (간단)
+      try{ new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA=').play(); }catch(e){}
+      const dataUrl = captureFrame(900); // 고해상도 캡처
+      shots.push(dataUrl);
+
+      // 썸네일 표시
+      const img = document.createElement('img');
+      img.src = dataUrl;
+      img.style.width = '74px';
+      img.style.height = '74px';
+      img.style.objectFit = 'cover';
+      img.style.borderRadius = '6px';
+      thumbs.appendChild(img);
+
+      await sleep(500); // 간격
+    }
+
+    // 합성: 세로 스트립 (네컷)
+    // each shot is square; we'll create a vertical strip: width = shotWidth, height = shotWidth * 4
+    const shotPx = 900;
+    composeCanvas.width = shotPx;
+    composeCanvas.height = shotPx * 4;
+    const ctx = composeCanvas.getContext('2d');
+    // 배경 (white) + optional frame
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0,0,composeCanvas.width,composeCanvas.height);
+
+    for(let i=0;i<shots.length;i++){
+      const img = await loadImg(shots[i]);
+      ctx.drawImage(img, 0, shotPx * i, shotPx, shotPx);
+    }
+
+    // optional: add footer text / logo
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.font = '28px sans-serif';
+    ctx.fillText('인생네컷 — Demo', 12, composeCanvas.height - 20);
+
+    const finalData = composeCanvas.toDataURL('image/jpeg', 0.95);
+    finalImg.src = finalData;
+    finalImg.style.display = 'block';
+    downloadBtn.disabled = false;
+    retakeBtn.disabled = false;
+    startBtn.disabled = false;
+  }
+
+  function loadImg(src){
+    return new Promise((res, rej)=>{
+      const i = new Image();
+      i.onload = ()=>res(i);
+      i.onerror = rej;
+      i.src = src;
+    });
+  }
+
+  startBtn.addEventListener('click', shootSequence);
+  retakeBtn.addEventListener('click', ()=>{
+    shots = [];
+    thumbs.innerHTML = '';
+    finalImg.style.display = 'none';
+    downloadBtn.disabled = true;
+  });
+
+  downloadBtn.addEventListener('click', ()=>{
+    const a = document.createElement('a');
+    a.href = composeCanvas.toDataURL('image/jpeg', 0.95);
+    a.download = `insaeng_4cut_${Date.now()}.jpg`;
+    a.click();
+  });
+
+})();
+</script>
+</body>
+</html>
