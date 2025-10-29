@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>인생네컷 데모</title>
+<link href="https://fonts.googleapis.com/css2?family=Nanum+Pen+Script&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<h2>인생네컷 데모</h2>
+<div class="stage">
+  <div style="position:relative">
+    <video id="preview" autoplay playsinline></video>
+    <div class="overlay-frame"></div>
+    <div id="countdown" class="count"></div>
+  </div>
+
+  <div class="controls">
+    <button id="startBtn">촬영 시작</button>
+    <button id="retakeBtn" class="small" disabled>다시 촬영</button>
+    <button id="downloadBtn" class="small" disabled>다운로드</button>
+  </div>
+
+  <div class="thumbnail-row" id="thumbs"></div>
+  <canvas id="composeCanvas" style="display:none;"></canvas>
+  <img id="finalImg" alt="final" style="display:none" />
+</div>
+
+<div class="footer">카운트다운 → 4장 촬영 → 합성 → 다운로드</div>
+
+<script src="script.js"></script>
+</body>
+</html>
